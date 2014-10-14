@@ -1,0 +1,14 @@
+{
+  "name": "expand-selection",
+  "main": "./lib/expand-selection",
+  "version": "0.1.0",
+  "description": "Expand the selection based on the scope.",
+  "activationEvents": ["expand-selection:expand"],
+  "repository": "https://github.com/mrolla/expand-selection",
+  "license": "MIT",
+  "engines": {
+    "atom": ">0.50.0"
+  },
+  "dependencies": {
+  }
+}
