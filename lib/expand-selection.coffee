@@ -1,56 +1,64 @@
+{Subscriber} = require 'emissary'
+
 module.exports =
-  activate: (state) ->
-    atom.workspaceView.command "expand-selection:expand", => @expand()
+class ExpandSelection
+    Subscriber.includeInto(this)
 
-  expand: ->
-    editor = atom.workspace.activePaneItem
-    cursors = editor?.getCursors()
+    stringScope = 'string.quoted.'
+    whitespaces = /^[ \t]*/
 
-    # Give up if this happens, there may not be an open editor
-    return unless cursors
+    constructor: ->
+        @subscribeToCommand atom.workspaceView, 'expand-selection:expand', =>
+            if editor = atom.workspace.getActiveEditor()
+                @expand(editor)
 
-    # First of all select the word under cursor if not already selected.
-    if editor.getLastSelection().isEmpty()
-        editor.selectWordsContainingCursors();
-        return
+    destroy: ->
+        @unsubscribe()
 
-    # Iterate over all cursors.
-    for cursor in cursors
-        # Go outward from the innermost scope and select the first one that includes unselected text
-        cursorPosition = cursor.getBufferPosition()
+    expand: (editor) ->
+        # First of all select the word under cursor if not already selected.
+        if editor.getLastSelection().isEmpty()
+            editor.selectWordsContainingCursors();
+            return
 
-        # TODO: This can be optimized for sure.
-        # Select selection range.
-        selection = null
-        for range in editor.getSelectedBufferRanges()
-            if range.containsPoint(cursorPosition, false)
-                selection = range
-                break
+        cursors = editor.getCursors()
 
-        return unless selection
+        # Iterate over all cursors.
+        for cursor in cursors
+            # Go outward from the innermost scope and select the first one that includes unselected text
+            cursorPosition = cursor.getBufferPosition()
 
-        for scope in cursor.getScopes().slice().reverse()
-            # FIXME: Using the display buffer directly may not be the best choice.
-            scopeRange = editor.displayBuffer.bufferRangeForScopeAtPosition(scope, cursorPosition)
-            fullRange = cursor.getCurrentLineBufferRange()
+            # TODO: This can be optimized for sure.
+            # Select selection range.
+            selection = null
+            for range in editor.getSelectedBufferRanges()
+                if range.containsPoint(cursorPosition, false)
+                    selection = range
+                    break
 
-            # Expand to the string except the quotes.
-            if scope.indexOf("string.quoted.") == 0 and !expandStringRange(selection, scopeRange)
-                scopeRange.start.column = scopeRange.start.column + 1
-                scopeRange.end.column = scopeRange.end.column - 1
+            return unless selection
 
-            # Scope range is full row.
-            if scopeRange.containsRange(fullRange)
-                editor.scanInBufferRange /^[ \t]*/, scopeRange, ({range}) ->
-                  scopeRange.start = range.end
+            for scope in cursor.getScopes().slice().reverse()
+                # FIXME: Using the display buffer directly may not be the best choice.
+                scopeRange = editor.displayBuffer.bufferRangeForScopeAtPosition(scope, cursorPosition)
+                fullRange = cursor.getCurrentLineBufferRange()
 
-            # Check we are not re-applying the same range and that the new range
-            # does really contain the old one.
-            if !scopeRange.isEqual(selection) and scopeRange.containsRange(selection)
-                editor.addSelectionForBufferRange(scopeRange)
-                break
+                # Expand to the string except the quotes.
+                if scope.indexOf(stringScope) == 0 and !expandStringRange(selection, scopeRange)
+                    scopeRange.start.column = scopeRange.start.column + 1
+                    scopeRange.end.column = scopeRange.end.column - 1
+                # Scope range is full row.
+                else if scopeRange.containsRange(fullRange)
+                    editor.scanInBufferRange whitespaces, scopeRange, ({range}) ->
+                      scopeRange.start = range.end
 
-# Check if the range is a string range minus the quotes.
-expandStringRange = (range1, range2) ->
-    range1.start.row == range2.start.row && range1.end.row == range2.end.row &&
-        range1.start.column - 1 == range2.start.column && range1.end.column + 1 == range2.end.column
+                # Check we are not re-applying the same range and that the new range
+                # does really contain the old one.
+                if !scopeRange.isEqual(selection) and scopeRange.containsRange(selection)
+                    editor.addSelectionForBufferRange(scopeRange)
+                    break
+
+    # Check if the range is a string range minus the quotes.
+    expandStringRange = (range1, range2) ->
+        range1.start.row == range2.start.row and range1.end.row == range2.end.row and
+            range1.start.column - 1 == range2.start.column and range1.end.column + 1 == range2.end.column

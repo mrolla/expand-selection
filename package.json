@@ -1,6 +1,6 @@
 {
   "name": "expand-selection",
-  "main": "./lib/expand-selection",
+  "main": "./lib/main",
   "version": "0.1.0",
   "description": "Expand the selection based on the scope.",
   "activationEvents": ["expand-selection:expand"],
@@ -10,5 +10,6 @@
     "atom": ">0.50.0"
   },
   "dependencies": {
+        "emissary": "1.x"
   }
 }
