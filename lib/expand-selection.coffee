@@ -1,4 +1,20 @@
+_ = require 'underscore-plus'
+{Range} = require 'atom'
 {Subscriber} = require 'emissary'
+
+startPairMatches =
+  '(': ')'
+  '[': ']'
+  '{': '}'
+
+endPairMatches =
+  ')': '('
+  ']': '['
+  '}': '{'
+
+pairRegexes = {}
+for startPair, endPair of startPairMatches
+  pairRegexes[startPair] = new RegExp("[#{_.escapeRegExp(startPair + endPair)}]", 'g')
 
 module.exports =
 class ExpandSelection
@@ -6,6 +22,11 @@ class ExpandSelection
 
     stringScope: 'string.quoted.'
     whitespaces: /^[ \t]*/
+
+    # Bracket matching regexes.
+    combinedRegExp: /[\(\[\{\)\]\}]/g
+    startPairRegExp: /[\(\[\{]/g
+    endPairRegExp: /[\)\]\}]/g
 
     constructor: ->
         @subscribeToCommand atom.workspaceView, 'expand-selection:expand', =>
@@ -15,14 +36,48 @@ class ExpandSelection
     destroy: ->
         @unsubscribe()
 
+    # Find a suitable open bracket in the editor from a given position backward.
+    # Borrowed some code from the atom's bracket-matcher package.
+    findAnyStartPair: (editor, fromPosition) ->
+        scanRange = new Range([0, 0], fromPosition)
+        startPosition = null
+        unpairedCount = 0
+        editor.backwardsScanInBufferRange @combinedRegExp, scanRange,
+            ({match, range, stop}) =>
+                if match[0].match(@endPairRegExp)
+                    unpairedCount++
+                else if match[0].match(@startPairRegExp)
+                    unpairedCount--
+                    startPosition = range.start
+                    stop() if unpairedCount < 0
+        startPosition
+
+    # Find a matching closed bracket in the editor for a pair from a given position.
+    # Borrowed some code from the atom's bracket-matcher package.
+    findMatchingEndPair: (editor, fromPosition, startPair) ->
+        endPair = startPairMatches[startPair]
+        scanRange = new Range(fromPosition, editor.buffer.getEndPosition())
+        endPairPosition = null
+        unpairedCount = 0
+        editor.scanInBufferRange pairRegexes[startPair], scanRange,
+            ({match, range, stop}) ->
+                switch match[0]
+                    when startPair
+                        unpairedCount++
+                    when endPair
+                        unpairedCount--
+                        if unpairedCount < 0
+                            endPairPosition = range.start
+                            stop()
+
+        endPairPosition?.add([0, 1])
+
     expand: (editor) ->
         # First of all select the word under cursor if not already selected.
         return editor.selectWordsContainingCursors() if editor.getLastSelection().isEmpty()
 
-        cursors = editor.getCursors()
-
         # Iterate over all cursors.
-        for cursor in cursors
+        for cursor in editor.getCursors()
             selection = @getSelectionOnCursor(editor, cursor)
             break if not selection?
 
@@ -37,12 +92,24 @@ class ExpandSelection
 
                 # Expand to the string except the quotes.
                 if scope.indexOf(@stringScope) is 0
-                    @getStringRange(selection, scopeRange)
+                    scopeRange = @shrinkRange(scopeRange, 1) if not @isShrinkedRange(selection, scopeRange, 1)
                 # Scope range is full row.
+                else if scope.indexOf('meta.') is 0
+                    selection.end.column = scopeRange.end.column
                 else if scopeRange.containsRange(fullRange)
-                    editor.scanInBufferRange @whitespaces, scopeRange,
-                        ({range}) -> scopeRange.start = range.end
-                    scopeRange = fullRange if scopeRange.isEqual(selection)
+                    # Before selecting the full line check for containing brackets.
+                    if startPosition = @findAnyStartPair(editor, selection.start)
+                        startPair = editor.getTextInRange(Range.fromPointWithDelta(startPosition, 0, 1))
+                        endPosition = @findMatchingEndPair(editor, selection.end, startPair)
+                        # If we found an end position and this range has not been selected already.
+                        if endPosition? and selection.start isnt startPosition and selection.end isnt endPosition
+                            scopeRange = new Range(startPosition, endPosition)
+                            scopeRange = @shrinkRange(scopeRange, 1) if not @isShrinkedRange(selection, scopeRange, 1)
+
+                # Skip leading white spaces the first time.
+                editor.scanInBufferRange @whitespaces, scopeRange,
+                    ({range}) -> scopeRange.start = range.end
+                scopeRange = fullRange if scopeRange.isEqual(selection)
 
                 # Check we are not re-applying the same range and that the new range
                 # does really contain the old one.
@@ -50,19 +117,16 @@ class ExpandSelection
                     editor.addSelectionForBufferRange(scopeRange)
                     break
 
-    getStringRange: (selection, scope) ->
-        if not @expandStringRange(selection, scope)
-            scope.start.column = scope.start.column + 1
-            scope.end.column = scope.end.column - 1
-        scope
-
     # TODO: This can be optimized for sure.
     # Select selection range.
     getSelectionOnCursor: (editor, cursor) ->
         for range in editor.getSelectedBufferRanges()
-            return range if range.containsPoint(cursor.getBufferPosition(), no)
+            return range if range.containsPoint(cursor.getBufferPosition(), false)
 
-    # Check if the range is a string range minus the quotes.
-    expandStringRange: (range1, range2) ->
-        range1.start.row is range2.start.row and range1.end.row is range2.end.row and
-            range1.start.column - 1 is range2.start.column and range1.end.column + 1 is range2.end.column
+    # Shrink a range by a given amount.
+    shrinkRange: (range, amount) ->
+        new Range(range.start.add([0, amount]), range.end.add([0, -amount]))
+
+    # Check if range1 is a shrinked version of range2 by a given amount.
+    isShrinkedRange: (range1, range2, amount) ->
+        range1.start.add([0, -amount]).isEqual(range2.start) and range1.end.add([0, amount]).isEqual(range2.end)
