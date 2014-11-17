@@ -75,8 +75,8 @@ class ExpandSelection
 
   expand: (editor) ->
     # First of all select the word under cursor if not already selected.
-    return editor.selectWordsContainingCursors() if editor
-      getLastSelection().isEmpty()
+    return editor.selectWordsContainingCursors() if (
+      editor.getLastSelection().isEmpty())
 
     # Iterate over all cursors.
     for cursor in editor.getCursors()
