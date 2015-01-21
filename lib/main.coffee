@@ -1,9 +1,8 @@
-ExpandSelection = require './expand-selection'
+ExpandSelectionView = require './expand-selection-view'
 
 module.exports =
   activate: ->
-    @expandSelection = new ExpandSelection()
+    @view = new ExpandSelectionView()
 
   deactivate: ->
-    @expandSelection?.destroy()
-    @expandSelection = null
+    @view?.destroy()

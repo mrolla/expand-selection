@@ -1,6 +1,6 @@
 _ = require 'underscore-plus'
-{Range} = require 'atom'
-{Subscriber} = require 'emissary'
+{CompositeDisposable, Range} = require 'atom'
+{View} = require 'atom-space-pen-views'
 
 startPairMatches =
   '(': ')'
@@ -18,9 +18,7 @@ for startPair, endPair of startPairMatches
     new RegExp("[#{_.escapeRegExp(startPair + endPair)}]", 'g')
 
 module.exports =
-class ExpandSelection
-  Subscriber.includeInto(this)
-
+class ExpandSelectionView extends View
   stringScope: 'string.quoted.'
   whitespaces: /^[ \t]*/
 
@@ -30,12 +28,14 @@ class ExpandSelection
   endPairRegExp: /[\)\]\}]/g
 
   constructor: ->
-    @subscribeToCommand atom.workspaceView, 'expand-selection:expand', =>
-      if editor = atom.workspace.getActiveEditor()
-        @expand(editor)
+    @disposables = new CompositeDisposable
+    @disposables.add atom.commands.add 'atom-workspace',
+      'expand-selection:expand': =>
+        if editor = atom.workspace.getActiveEditor()
+          @expand(editor)
 
   destroy: ->
-    @unsubscribe()
+    @disposables.dispose()
 
   # Find a suitable open bracket in the editor from a given position backward.
   # Borrowed some code from the atom's bracket-matcher package.
