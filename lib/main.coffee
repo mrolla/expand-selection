@@ -1,8 +1,15 @@
 ExpandSelectionView = require './expand-selection-view'
+{CompositeDisposable, Range} = require 'atom'
 
 module.exports =
   activate: ->
-    @view = new ExpandSelectionView()
+    @views = []
+    @subscriptions = new CompositeDisposable
+
+    @subscriptions.add atom.workspace.observeTextEditors (editor) =>
+      view = new ExpandSelectionView(editor)
+      @views.push view
 
   deactivate: ->
-    @view?.destroy()
+    @subscriptions.dispose()
+    view.remove() for view in @views
