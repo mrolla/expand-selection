@@ -1,5 +1,7 @@
 # Expand Selection package.
 
+**DEPRECATED** - Check out [atom-expand-region](https://github.com/aki77/atom-expand-region)
+
 The feature you don't know you need, but you can't live without!
 
 ![expand-selection](https://raw.github.com/mrolla/expand-selection/master/docs/expand-selection.gif)
